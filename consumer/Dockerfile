@@ -1,11 +1,11 @@
 FROM golang:latest
 
-ENV APP_NAME rmq-consumer
+ENV APP_NAME main.go
 
 COPY . /go/src/${APP_NAME}
 WORKDIR /go/src/${APP_NAME}
 
 RUN go get ./
-RUN go build -o ${APP_NAME}
+RUN go build main.go
 
-CMD ./${APP_NAME}
+CMD ./main

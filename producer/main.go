@@ -1,42 +1,52 @@
 package main
 
 import (
-	"fmt"
-
-	"github.com/gin-gonic/gin"
-	"github.com/lakhinsu/rabbitmq-go-example/producer/app"
-	"github.com/lakhinsu/rabbitmq-go-example/producer/utils"
-	"github.com/rs/zerolog/log"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"log"
+	"net/http"
 )
 
-func init() {
-	// Set gin mode
-	mode := utils.GetEnvVar("GIN_MODE")
-	gin.SetMode(mode)
+func main() {
+	http.HandleFunc("/ping/", ping)
+
+	log.Fatal(http.ListenAndServe(":5050", nil))
 }
 
-func main() {
-	// Setup the app
-	app := app.SetupApp()
+func ping(w http.ResponseWriter, r *http.Request) {
+	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5673/")
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer conn.Close()
 
-	// Read ADDR and port
-	addr := utils.GetEnvVar("GIN_ADDR")
-	port := utils.GetEnvVar("GIN_PORT")
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer ch.Close()
 
-	https := utils.GetEnvVar("GIN_HTTPS")
-	// HTTPS mode
-	if https == "true" {
-		certFile := utils.GetEnvVar("GIN_CERT")
-		certKey := utils.GetEnvVar("GIN_CERT_KEY")
-		log.Info().Msgf("Starting service on https//:%s:%s", addr, port)
+	q, err := ch.QueueDeclare(
+		"hello", // name
+		false,   // durable
+		false,   // delete when unused
+		false,   // exclusive
+		false,   // no-wait
+		nil,     // arguments
+	)
+	failOnError(err, "Failed to declare a queue")
 
-		if err := app.RunTLS(fmt.Sprintf("%s:%s", addr, port), certFile, certKey); err != nil {
-			log.Fatal().Err(err).Msg("Error occurred while setting up the server in HTTPS mode")
-		}
-	}
-	// HTTP mode
-	log.Info().Msgf("Starting service on http//:%s:%s", addr, port)
-	if err := app.Run(fmt.Sprintf("%s:%s", addr, port)); err != nil {
-		log.Fatal().Err(err).Msg("Error occurred while setting up the server")
+	body := "Ping Pong!"
+	err = ch.Publish(
+		"",     // exchange
+		q.Name, // routing key
+		false,  // mandatory
+		false,  // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(body),
+		})
+	failOnError(err, "Failed to publish a message")
+	log.Printf(" [x] Sent %s\n", body)
+}
+
+func failOnError(err error, msg string) {
+	if err != nil {
+		log.Panicf("%s: %s", msg, err)
 	}
 }
